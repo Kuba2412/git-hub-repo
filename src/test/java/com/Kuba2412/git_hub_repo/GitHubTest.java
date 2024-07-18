@@ -6,9 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import feign.RetryableException;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cloud.openfeign.FeignClientBuilder;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,12 +31,27 @@ public class GitHubTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private ApplicationContext applicationContext;
+
     public static void setup() {
         wireMockServer = new WireMockServer(8081);
         wireMockServer.start();
         WireMock.configureFor("localhost", 8081);
     }
 
+    @AfterAll
+    public static void teardown() {
+        wireMockServer.stop();
+    }
+
+    @BeforeEach
+    public void ClientConfig() {
+        FeignClientBuilder feignClientBuilder = new FeignClientBuilder(applicationContext);
+        gitHubClient = feignClientBuilder.forType(GitHubClient.class, "githubClient")
+                .url("http://localhost:8081")
+                .build();
+    }
 
     @Test
     public void testGetRepositoryDetails_Success() throws Exception {
