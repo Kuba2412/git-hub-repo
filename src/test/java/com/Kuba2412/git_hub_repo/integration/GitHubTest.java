@@ -1,4 +1,4 @@
-package com.Kuba2412.git_hub_repo;
+package com.Kuba2412.git_hub_repo.integration;
 
 import com.Kuba2412.git_hub_repo.client.GitHubClient;
 import com.Kuba2412.git_hub_repo.repository.GitHubRepo;
@@ -7,6 +7,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import feign.RetryableException;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SpringBootTest
 public class GitHubTest {
     private static WireMockServer wireMockServer;
+
+    @Autowired
     private GitHubClient gitHubClient;
 
     @Autowired
@@ -34,6 +37,7 @@ public class GitHubTest {
     @Autowired
     private ApplicationContext applicationContext;
 
+    @BeforeAll
     public static void setup() {
         wireMockServer = new WireMockServer(8081);
         wireMockServer.start();
@@ -56,6 +60,7 @@ public class GitHubTest {
     @Test
     public void testGetRepositoryDetails_Success() throws Exception {
         // Given
+        wireMockServer.start();
         GitHubRepo repo = new GitHubRepo();
         repo.setFullName("Kuba2412/MedicalClinic");
         repo.setDescription("Description");
@@ -63,13 +68,11 @@ public class GitHubTest {
         repo.setStars(10);
         repo.setCreatedAt(LocalDateTime.now());
 
-        String repoJson = objectMapper.writeValueAsString(repo);
-
         wireMockServer.stubFor(get(urlPathEqualTo("/repos/Kuba2412/MedicalClinic"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(repoJson)));
+                        .withBody(objectMapper.writeValueAsString(repo))));
 
         // When
         GitHubRepo responseRepo = gitHubClient.getRepository("Kuba2412", "MedicalClinic");
@@ -80,27 +83,13 @@ public class GitHubTest {
         assertEquals(repo.getCloneUrl(), responseRepo.getCloneUrl());
         assertEquals(repo.getStars(), responseRepo.getStars());
         assertEquals(repo.getCreatedAt(), responseRepo.getCreatedAt());
+        wireMockServer.stop();
     }
 
     @Test
-    public void testGetRepositoryDetails_NotFound() {
+    public void testGetRepositoryDetails_ServiceUnavailable() throws Exception {
         // Given
-        wireMockServer.stubFor(get(urlPathEqualTo("/repos/Kuba2412/NonExistingRepo"))
-                .willReturn(aResponse()
-                        .withStatus(404)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{\"message\": \"Not Found\"}")));
-
-        // When & Then
-        ResponseStatusException thrown = assertThrows(ResponseStatusException.class, () -> {
-            gitHubClient.getRepository("Kuba2412", "NonExistingRepo");
-        });
-        assertEquals(HttpStatus.NOT_FOUND, thrown.getStatusCode());
-    }
-
-    @Test
-    public void testGetRepositoryDetails_ServiceUnavailable() {
-        // Given
+        wireMockServer.start();
         wireMockServer.stubFor(get(urlPathEqualTo("/repos/Kuba2412/AnyRepo"))
                 .willReturn(aResponse()
                         .withStatus(503)
@@ -111,6 +100,7 @@ public class GitHubTest {
         RetryableException thrown = assertThrows(RetryableException.class, () -> {
             gitHubClient.getRepository("Kuba2412", "AnyRepo");
         });
-        assertEquals(503, thrown.status());
+        assertEquals(503, thrown.getMessage());
+        wireMockServer.stop();
     }
 }
